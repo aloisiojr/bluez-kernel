@@ -275,10 +275,21 @@ static void hci_init_req(struct hci_dev *hdev, unsigned long opt)
 
 static void hci_le_init_req(struct hci_dev *hdev, unsigned long opt)
 {
+	struct hci_cp_le_set_adv_params params;
+
 	BT_DBG("%s", hdev->name);
 
 	/* Read LE buffer size */
 	hci_send_cmd(hdev, HCI_OP_LE_READ_BUFFER_SIZE, 0, NULL);
+
+	/* Set ADV params */
+	memset(&params, 0, sizeof(params));
+	params.interval_min = __constant_cpu_to_le16(0x0800);
+	params.interval_max = __constant_cpu_to_le16(0x0800);
+	params.type = ADV_NONCONN_IND;
+	params.own_address_type = ADDR_LE_DEV_PUBLIC;
+	params.channel_map = ADV_USE_ALL_CHANNELS;
+	hci_send_cmd(hdev, HCI_OP_LE_SET_ADV_PARAMS, sizeof(params), &params);
 }
 
 static void hci_scan_req(struct hci_dev *hdev, unsigned long opt)
