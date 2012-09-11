@@ -1524,6 +1524,25 @@ int hci_broadcast_data_add(struct hci_dev *hdev, u8 flags, u8 type, u8 length,
 	return 0;
 }
 
+int hci_broadcast_data_remove(struct hci_dev *hdev, u8 type)
+{
+	struct broadcast_data *match, *n;
+	int matches = 0;
+
+	list_for_each_entry_safe(match, n, &hdev->broadcast_data, list) {
+		if (type != match->type)
+			continue;
+
+		list_del(&match->list);
+		hdev->broadcast_data_len -= sizeof(match->length) +
+					    sizeof(match->type) + match->length;
+		kfree(match);
+		matches++;
+	}
+
+	return matches;
+}
+
 int hci_broadcast_data_clear(struct hci_dev *hdev)
 {
 	struct broadcast_data *b_data, *n;

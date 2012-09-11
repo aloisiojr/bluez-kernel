@@ -765,6 +765,7 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
 
 int hci_broadcast_data_add(struct hci_dev *hdev, u8 flags, u8 type, u8 length,
 			   u8 *data);
+int hci_broadcast_data_remove(struct hci_dev *hdev, u8 type);
 int hci_broadcast_data_clear(struct hci_dev *hdev);
 
 #define SET_HCIDEV_DEV(hdev, pdev) ((hdev)->dev.parent = (pdev))

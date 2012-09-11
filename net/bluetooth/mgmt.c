@@ -2739,6 +2739,29 @@ static int set_controller_data(struct sock *sk, struct hci_dev *hdev,
 			    0);
 }
 
+static int unset_controller_data(struct sock *sk, struct hci_dev *hdev,
+				 void *data, u16 len)
+{
+	struct mgmt_cp_unset_controller_data *cp = data;
+
+	BT_DBG("%s type:0x%02x", hdev->name, cp->type);
+
+	hci_dev_lock(hdev);
+
+	if (!hdev_is_powered(hdev)) {
+		hci_dev_unlock(hdev);
+		return cmd_status(sk, hdev->id, MGMT_OP_UNSET_CONTROLLER_DATA,
+				  MGMT_STATUS_NOT_POWERED);
+	}
+
+	hci_broadcast_data_remove(hdev, cp->type);
+
+	hci_dev_unlock(hdev);
+
+	return cmd_complete(sk, hdev->id, MGMT_OP_UNSET_CONTROLLER_DATA, 0,
+			    NULL, 0);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -2787,6 +2810,7 @@ static const struct mgmt_handler {
 	{ unblock_device,         false, MGMT_UNBLOCK_DEVICE_SIZE },
 	{ set_device_id,          false, MGMT_SET_DEVICE_ID_SIZE },
 	{ set_controller_data,    true,  MGMT_SET_CONTROLLER_DATA_SIZE },
+	{ unset_controller_data,  false, MGMT_UNSET_CONTROLLER_DATA_SIZE },
 };
 
 

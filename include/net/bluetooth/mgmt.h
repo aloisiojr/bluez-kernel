@@ -359,6 +359,12 @@ struct mgmt_cp_set_controller_data {
 } __packed;
 #define MGMT_SET_CONTROLLER_DATA_SIZE	3
 
+#define MGMT_OP_UNSET_CONTROLLER_DATA	0x002A
+struct mgmt_cp_unset_controller_data {
+	__u8	type;
+} __packed;
+#define MGMT_UNSET_CONTROLLER_DATA_SIZE	1
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16	opcode;
