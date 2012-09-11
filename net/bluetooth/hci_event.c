@@ -606,11 +606,22 @@ static void bredr_setup(struct hci_dev *hdev)
 
 static void le_setup(struct hci_dev *hdev)
 {
+	struct hci_cp_le_set_adv_params params;
+
 	/* Read LE Buffer Size */
 	hci_send_cmd(hdev, HCI_OP_LE_READ_BUFFER_SIZE, 0, NULL);
 
 	/* Read LE Advertising Channel TX Power */
 	hci_send_cmd(hdev, HCI_OP_LE_READ_ADV_TX_POWER, 0, NULL);
+
+	/* Set ADV params */
+	memset(&params, 0, sizeof(params));
+	params.interval_min = __constant_cpu_to_le16(0x0800);
+	params.interval_max = __constant_cpu_to_le16(0x0800);
+	params.type = ADV_NONCONN_IND;
+	params.own_address_type = ADDR_LE_DEV_PUBLIC;
+	params.channel_map = ADV_USE_ALL_CHANNELS;
+	hci_send_cmd(hdev, HCI_OP_LE_SET_ADV_PARAMS, sizeof(params), &params);
 }
 
 static void hci_setup(struct hci_dev *hdev)
@@ -1357,6 +1368,15 @@ static void hci_cc_write_remote_amp_assoc(struct hci_dev *hdev,
 		return;
 
 	amp_write_rem_assoc_continue(hdev, rp->phy_handle);
+}
+
+static void hci_cc_le_set_adv_params(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	__u8 status = *((__u8 *) skb->data);
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	hci_req_complete(hdev, HCI_OP_LE_SET_ADV_PARAMS, status);
 }
 
 static void hci_cs_inquiry(struct hci_dev *hdev, __u8 status)
@@ -2678,6 +2698,10 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_OP_WRITE_REMOTE_AMP_ASSOC:
 		hci_cc_write_remote_amp_assoc(hdev, skb);
+		break;
+
+	case HCI_OP_LE_SET_ADV_PARAMS:
+		hci_cc_le_set_adv_params(hdev, skb);
 		break;
 
 	default:
