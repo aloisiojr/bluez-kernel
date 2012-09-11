@@ -350,6 +350,15 @@ struct mgmt_cp_set_device_id {
 } __packed;
 #define MGMT_SET_DEVICE_ID_SIZE		8
 
+#define MGMT_OP_SET_CONTROLLER_DATA	0x0029
+struct mgmt_cp_set_controller_data {
+	__u8	flags;
+	__u8	type;
+	__u8	length;
+	__u8	data[0];
+} __packed;
+#define MGMT_SET_CONTROLLER_DATA_SIZE	3
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16	opcode;

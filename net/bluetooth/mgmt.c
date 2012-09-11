@@ -2685,6 +2685,76 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 	return 0;
 }
 
+static void update_adv_data(struct hci_dev *hdev)
+{
+	struct hci_cp_le_set_adv_data cp;
+	struct controller_data *d;
+	u8 len, *ptr;
+
+	if (!hdev_is_powered(hdev))
+		return;
+
+	memset(&cp.data, 0, sizeof(cp.data));
+	ptr = cp.data;
+	len = 0;
+
+	list_for_each_entry(d, &hdev->controller_data, list) {
+		u8 entry_len = sizeof(d->length) + sizeof(d->type) + d->length;
+
+		if (len + entry_len > HCI_MAX_ADV_LENGTH) {
+			BT_DBG("Controller data bigger than adv data slot");
+			return;
+		}
+
+		ptr[0] = sizeof(d->type) + d->length;
+		ptr[1] = d->type;
+		memcpy(&ptr[2], d->data, d->length);
+
+		len += entry_len;
+		ptr += entry_len;
+	}
+
+	cp.data_len = len;
+
+	hci_send_cmd(hdev, HCI_OP_LE_SET_ADV_DATA, sizeof(cp), &cp);
+}
+
+static int set_controller_data(struct sock *sk, struct hci_dev *hdev,
+			       void *data, u16 len)
+{
+	struct mgmt_cp_set_controller_data *cp = data;
+	u8 room;
+
+	BT_DBG("%s", hdev->name);
+
+	if (cp->type != ADV_SERVICE_DATA && cp->type != ADV_MANUFACTURER_DATA)
+		return cmd_status(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA,
+				  MGMT_STATUS_INVALID_PARAMS);
+
+	hci_dev_lock(hdev);
+
+	room = HCI_MAX_ADV_LENGTH - hdev->adv_data_len;
+	if (sizeof(cp->length) + sizeof(cp->type) + cp->length > room) {
+		hci_dev_unlock(hdev);
+		return cmd_status(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA,
+				  MGMT_STATUS_NO_RESOURCES);
+	}
+
+	BT_DBG("flags:0x%02x length:%i type:0x%02x", cp->flags, cp->length,
+	       cp->type);
+
+	hci_controller_data_add(hdev, cp->flags, cp->type, cp->length,
+				cp->data);
+
+	if (test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
+		update_adv_data(hdev);
+
+	hci_dev_unlock(hdev);
+
+	return cmd_complete(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA, 0, NULL,
+			    0);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -2732,6 +2802,7 @@ static const struct mgmt_handler {
 	{ block_device,           false, MGMT_BLOCK_DEVICE_SIZE },
 	{ unblock_device,         false, MGMT_UNBLOCK_DEVICE_SIZE },
 	{ set_device_id,          false, MGMT_SET_DEVICE_ID_SIZE },
+	{ set_controller_data,    true,  MGMT_SET_CONTROLLER_DATA_SIZE },
 };
 
 
@@ -2895,6 +2966,9 @@ int mgmt_powered(struct hci_dev *hdev, u8 powered)
 		update_class(hdev);
 		update_name(hdev, hdev->dev_name);
 		update_eir(hdev);
+
+		if (test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
+			update_adv_data(hdev);
 	} else {
 		u8 status = MGMT_STATUS_NOT_POWERED;
 		mgmt_pending_foreach(0, hdev, cmd_status_rsp, &status);
