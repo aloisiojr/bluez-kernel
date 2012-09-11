@@ -123,6 +123,14 @@ struct le_scan_params {
 	int timeout;
 };
 
+struct controller_data {
+	struct list_head list;
+	u8 flags;
+	u8 type;
+	u8 length;
+	u8 data[0];
+};
+
 #define HCI_MAX_SHORT_NAME_LENGTH	10
 
 struct amp_assoc {
@@ -279,6 +287,9 @@ struct hci_dev {
 	struct le_scan_params	le_scan_params;
 
 	__s8			adv_tx_power;
+
+	struct list_head	controller_data;
+	__u16			adv_data_len;
 
 	int (*open)(struct hci_dev *hdev);
 	int (*close)(struct hci_dev *hdev);
@@ -746,6 +757,10 @@ void hci_del_sysfs(struct hci_dev *hdev);
 void hci_conn_init_sysfs(struct hci_conn *conn);
 void hci_conn_add_sysfs(struct hci_conn *conn);
 void hci_conn_del_sysfs(struct hci_conn *conn);
+
+int hci_controller_data_add(struct hci_dev *hdev, u8 flags, u8 type, u8 length,
+			    u8 *data);
+int hci_controller_data_clear(struct hci_dev *hdev);
 
 #define SET_HCIDEV_DEV(hdev, pdev) ((hdev)->dev.parent = (pdev))
 
