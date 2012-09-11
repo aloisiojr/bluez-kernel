@@ -908,6 +908,14 @@ struct hci_cp_le_set_adv_params {
 	__u8     filter_policy;
 } __packed;
 
+#define HCI_MAX_ADV_LENGTH		31
+
+#define HCI_OP_LE_SET_ADV_DATA		0x2008
+struct hci_cp_le_set_adv_data {
+	__u8     data_len;
+	__u8     data[HCI_MAX_ADV_LENGTH];
+} __packed;
+
 #define HCI_OP_LE_SET_SCAN_PARAM	0x200b
 struct hci_cp_le_set_scan_param {
 	__u8    type;
