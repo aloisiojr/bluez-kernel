@@ -1439,6 +1439,25 @@ int hci_controller_data_clear(struct hci_dev *hdev)
 	return 0;
 }
 
+int hci_controller_data_remove(struct hci_dev *hdev, u8 type)
+{
+	struct controller_data *match, *n;
+	int matches = 0;
+
+	list_for_each_entry_safe(match, n, &hdev->controller_data, list) {
+		if (type != match->type)
+			continue;
+
+		list_del(&match->list);
+		hdev->adv_data_len -= sizeof(match->length) +
+				      sizeof(match->type) + match->length;
+		kfree(match);
+		matches++;
+	}
+
+	return matches;
+}
+
 struct bdaddr_list *hci_blacklist_lookup(struct hci_dev *hdev, bdaddr_t *bdaddr)
 {
 	struct bdaddr_list *b;
