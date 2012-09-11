@@ -959,6 +959,20 @@ struct hci_cp_le_set_adv_data {
 
 #define HCI_OP_LE_SET_ADV_ENABLE	0x200a
 
+#define ADV_USE_ALL_CHANNELS		0x07
+
+#define HCI_OP_LE_SET_ADV_PARAMS	0x2006
+struct hci_cp_le_set_adv_params {
+	__le16   interval_min;
+	__le16   interval_max;
+	__u8     type;
+	__u8     own_address_type;
+	__u8     direct_address_type;
+	__u8     direct_address[6];
+	__u8     channel_map;
+	__u8     filter_policy;
+} __packed;
+
 #define HCI_OP_LE_SET_SCAN_PARAM	0x200b
 struct hci_cp_le_set_scan_param {
 	__u8    type;
