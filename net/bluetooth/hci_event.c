@@ -1204,6 +1204,7 @@ static void hci_cc_read_local_oob_data_reply(struct hci_dev *hdev,
 static void hci_cc_le_set_adv_enable(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	__u8 *sent, status = *((__u8 *) skb->data);
+	__u8 enable;
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
 
@@ -1211,13 +1212,30 @@ static void hci_cc_le_set_adv_enable(struct hci_dev *hdev, struct sk_buff *skb)
 	if (!sent)
 		return;
 
+	enable = *sent;
+
 	hci_dev_lock(hdev);
 
-	if (!status) {
-		if (*sent)
-			set_bit(HCI_LE_PERIPHERAL, &hdev->dev_flags);
-		else
-			clear_bit(HCI_LE_PERIPHERAL, &hdev->dev_flags);
+	if (hdev->le_adv_req_reason == LE_ADV_REQ_REASON_BROADCASTER) {
+		bool changed = false;
+		if (enable) {
+			if (!test_and_set_bit(HCI_BROADCASTER,
+					      &hdev->dev_flags))
+				changed = true;
+		} else {
+			if (test_and_clear_bit(HCI_BROADCASTER,
+					       &hdev->dev_flags))
+				changed = true;
+		}
+		if (!test_bit(HCI_INIT, &hdev->flags))
+			mgmt_set_broadcaster_complete(hdev, changed, status);
+	} else {
+		if (!status) {
+			if (enable)
+				set_bit(HCI_LE_PERIPHERAL, &hdev->dev_flags);
+			else
+				clear_bit(HCI_LE_PERIPHERAL, &hdev->dev_flags);
+		}
 	}
 
 	hci_dev_unlock(hdev);
