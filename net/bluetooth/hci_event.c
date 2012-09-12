@@ -1342,6 +1342,23 @@ static void hci_cc_le_set_adv_params(struct hci_dev *hdev, struct sk_buff *skb)
 	hci_req_complete(hdev, HCI_OP_LE_SET_ADV_PARAMS, status);
 }
 
+static void hci_cc_le_set_adv_enable(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	__u8 status = *((__u8 *) skb->data);
+	__u8 enable;
+	void *sent;
+
+	sent = hci_sent_cmd_data(hdev, HCI_OP_LE_SET_ADV_ENABLE);
+	if (!sent)
+		return;
+
+	enable = *((__u8 *) sent);
+
+	if (test_bit(HCI_MGMT, &hdev->dev_flags) &&
+	    !test_bit(HCI_INIT, &hdev->flags))
+		mgmt_set_broadcaster_complete(hdev, enable, status);
+}
+
 static void hci_cs_inquiry(struct hci_dev *hdev, __u8 status)
 {
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
@@ -2603,6 +2620,10 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_OP_LE_SET_ADV_PARAMS:
 		hci_cc_le_set_adv_params(hdev, skb);
+		break;
+
+	case HCI_OP_LE_SET_ADV_ENABLE:
+		hci_cc_le_set_adv_enable(hdev, skb);
 		break;
 
 	default:

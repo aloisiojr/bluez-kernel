@@ -377,6 +377,7 @@ static u32 get_supported_settings(struct hci_dev *hdev)
 
 	settings |= MGMT_SETTING_POWERED;
 	settings |= MGMT_SETTING_PAIRABLE;
+	settings |= MGMT_SETTING_BROADCASTER;
 
 	if (lmp_ssp_capable(hdev))
 		settings |= MGMT_SETTING_SSP;
@@ -419,6 +420,9 @@ static u32 get_current_settings(struct hci_dev *hdev)
 
 	if (test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
 		settings |= MGMT_SETTING_LE;
+
+	if (test_bit(HCI_BROADCASTER, &hdev->dev_flags))
+		settings |= MGMT_SETTING_BROADCASTER;
 
 	if (test_bit(HCI_LINK_SECURITY, &hdev->dev_flags))
 		settings |= MGMT_SETTING_LINK_SECURITY;
@@ -2792,6 +2796,74 @@ static int unset_controller_data(struct sock *sk, struct hci_dev *hdev,
 			    NULL, 0);
 }
 
+static int set_broadcaster_le(struct sock *sk, struct hci_dev *hdev, u8 enable)
+{
+	struct pending_cmd *cmd;
+	int err;
+
+	BT_DBG("%s enable:%i", hdev->name, enable);
+
+	hci_dev_lock(hdev);
+
+	if (!hdev_is_powered(hdev)) {
+		bool changed = false;
+
+		if (enable != test_bit(HCI_BROADCASTER, &hdev->dev_flags)) {
+			change_bit(HCI_BROADCASTER, &hdev->dev_flags);
+			changed = true;
+		}
+
+		err = send_settings_rsp(sk, MGMT_OP_SET_BROADCASTER, hdev);
+		if (err < 0)
+			goto unlock;
+
+		if (changed)
+			err = new_settings(hdev, sk);
+
+		goto unlock;
+	}
+
+	if (enable == test_bit(HCI_BROADCASTER, &hdev->dev_flags)) {
+		err = send_settings_rsp(sk, MGMT_OP_SET_BROADCASTER, hdev);
+		goto unlock;
+	}
+
+	if (mgmt_pending_find(MGMT_OP_SET_BROADCASTER, hdev)) {
+		err = cmd_status(sk, hdev->id, MGMT_OP_SET_BROADCASTER,
+				 MGMT_STATUS_BUSY);
+		goto unlock;
+	}
+
+	cmd = mgmt_pending_add(sk, MGMT_OP_SET_BROADCASTER, hdev, NULL, 0);
+	if (!cmd) {
+		err = -ENOMEM;
+		goto unlock;
+	}
+
+	err = hci_send_cmd(hdev, HCI_OP_LE_SET_ADV_ENABLE, sizeof(enable),
+			   &enable);
+	if (err < 0)
+		mgmt_pending_remove(cmd);
+
+unlock:
+	hci_dev_unlock(hdev);
+	return err;
+}
+
+static int set_broadcaster(struct sock *sk, struct hci_dev *hdev, void *data,
+			   u16 len)
+{
+	struct mgmt_mode *cp = data;
+
+	BT_DBG("%s val:%i", hdev->name, cp->val);
+
+	if (!test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
+		return cmd_status(sk, hdev->id, MGMT_OP_SET_BROADCASTER,
+				  MGMT_STATUS_NOT_SUPPORTED);
+
+	return set_broadcaster_le(sk, hdev, cp->val);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -2841,6 +2913,7 @@ static const struct mgmt_handler {
 	{ set_device_id,          false, MGMT_SET_DEVICE_ID_SIZE },
 	{ set_controller_data,    true,  MGMT_SET_CONTROLLER_DATA_SIZE },
 	{ unset_controller_data,  false, MGMT_UNSET_CONTROLLER_DATA_SIZE },
+	{ set_broadcaster,        false, MGMT_SETTING_SIZE },
 };
 
 
@@ -3029,6 +3102,12 @@ int mgmt_powered(struct hci_dev *hdev, u8 powered)
 					     sizeof(cp), &cp);
 
 			update_adv_data(hdev);
+
+			if (test_bit(HCI_BROADCASTER, &hdev->dev_flags)) {
+				u8 enable = 1;
+				hci_send_cmd(hdev, HCI_OP_LE_SET_ADV_ENABLE,
+					     sizeof(enable), &enable);
+			}
 		}
 
 		if (lmp_bredr_capable(hdev)) {
@@ -3690,6 +3769,41 @@ int mgmt_le_enable_complete(struct hci_dev *hdev, u8 enable, u8 status)
 	}
 
 	mgmt_pending_foreach(MGMT_OP_SET_LE, hdev, settings_rsp, &match);
+
+	if (changed)
+		err = new_settings(hdev, match.sk);
+
+	if (match.sk)
+		sock_put(match.sk);
+
+	return err;
+}
+
+int mgmt_set_broadcaster_complete(struct hci_dev *hdev, u8 enable, u8 status)
+{
+	struct cmd_lookup match = { NULL, hdev };
+	bool changed = false;
+	int err = 0;
+
+	if (status) {
+		u8 mgmt_err = mgmt_status(status);
+
+		mgmt_pending_foreach(MGMT_OP_SET_BROADCASTER, hdev,
+				     cmd_status_rsp, &mgmt_err);
+
+		return err;
+	}
+
+	if (enable) {
+		if (!test_and_set_bit(HCI_BROADCASTER, &hdev->dev_flags))
+			changed = true;
+	} else {
+		if (test_and_clear_bit(HCI_BROADCASTER, &hdev->dev_flags))
+			changed = true;
+	}
+
+	mgmt_pending_foreach(MGMT_OP_SET_BROADCASTER, hdev, settings_rsp,
+			     &match);
 
 	if (changed)
 		err = new_settings(hdev, match.sk);
