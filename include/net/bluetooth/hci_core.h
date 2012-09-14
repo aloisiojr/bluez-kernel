@@ -130,6 +130,11 @@ struct controller_data {
 	u8 data[0];
 };
 
+enum {
+	ISCAN_REQ_REASON_BCAST,
+	ISCAN_REQ_REASON_DISCOV,
+};
+
 #define HCI_MAX_SHORT_NAME_LENGTH	10
 
 #define NUM_REASSEMBLY 4
@@ -146,6 +151,7 @@ struct hci_dev {
 	__u8		dev_name[HCI_MAX_NAME_LENGTH];
 	__u8		short_name[HCI_MAX_SHORT_NAME_LENGTH];
 	__u8		eir[HCI_MAX_EIR_LENGTH];
+	__u16		eir_len;
 	__u8		dev_class[3];
 	__u8		major_class;
 	__u8		minor_class;
@@ -219,6 +225,8 @@ struct hci_dev {
 
 	__u16			discov_timeout;
 	struct delayed_work	discov_off;
+
+	__u8			iscan_req_reason;
 
 	struct delayed_work	service_cache;
 
@@ -1010,6 +1018,7 @@ int mgmt_index_removed(struct hci_dev *hdev);
 int mgmt_powered(struct hci_dev *hdev, u8 powered);
 int mgmt_discoverable(struct hci_dev *hdev, u8 discoverable);
 int mgmt_connectable(struct hci_dev *hdev, u8 connectable);
+int mgmt_broadcaster(struct hci_dev *hdev, u8 broadcaster);
 int mgmt_write_scan_failed(struct hci_dev *hdev, u8 scan, u8 status);
 int mgmt_new_link_key(struct hci_dev *hdev, struct link_key *key,
 		      bool persistent);

@@ -292,6 +292,7 @@ static void hci_cc_write_scan_enable(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	__u8 param, status = *((__u8 *) skb->data);
 	int old_pscan, old_iscan;
+	bool discoverable;
 	void *sent;
 
 	BT_DBG("%s status 0x%2.2x", hdev->name, status);
@@ -312,18 +313,27 @@ static void hci_cc_write_scan_enable(struct hci_dev *hdev, struct sk_buff *skb)
 
 	old_pscan = test_and_clear_bit(HCI_PSCAN, &hdev->flags);
 	old_iscan = test_and_clear_bit(HCI_ISCAN, &hdev->flags);
+	discoverable = (hdev->iscan_req_reason == ISCAN_REQ_REASON_DISCOV);
 
 	if (param & SCAN_INQUIRY) {
 		set_bit(HCI_ISCAN, &hdev->flags);
-		if (!old_iscan)
-			mgmt_discoverable(hdev, 1);
-		if (hdev->discov_timeout > 0) {
+		if (!old_iscan) {
+			if (discoverable)
+				mgmt_discoverable(hdev, 1);
+			else
+				mgmt_broadcaster(hdev, 1);
+		}
+		if (discoverable && hdev->discov_timeout > 0) {
 			int to = msecs_to_jiffies(hdev->discov_timeout * 1000);
 			queue_delayed_work(hdev->workqueue, &hdev->discov_off,
 					   to);
 		}
-	} else if (old_iscan)
-		mgmt_discoverable(hdev, 0);
+	} else if (old_iscan) {
+		if (discoverable)
+			mgmt_discoverable(hdev, 0);
+		else
+			mgmt_broadcaster(hdev, 0);
+	}
 
 	if (param & SCAN_PAGE) {
 		set_bit(HCI_PSCAN, &hdev->flags);

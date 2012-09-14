@@ -1117,6 +1117,7 @@ static void hci_discov_off(struct work_struct *work)
 {
 	struct hci_dev *hdev;
 	u8 scan = SCAN_PAGE;
+	bool bcast_bredr = false;
 
 	hdev = container_of(work, struct hci_dev, discov_off.work);
 
@@ -1124,7 +1125,13 @@ static void hci_discov_off(struct work_struct *work)
 
 	hci_dev_lock(hdev);
 
-	hci_send_cmd(hdev, HCI_OP_WRITE_SCAN_ENABLE, sizeof(scan), &scan);
+	if (test_bit(HCI_BROADCASTER, &hdev->dev_flags) &&
+	    !test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
+		bcast_bredr = true;
+
+	if (!bcast_bredr)
+		hci_send_cmd(hdev, HCI_OP_WRITE_SCAN_ENABLE, sizeof(scan),
+			     &scan);
 
 	hdev->discov_timeout = 0;
 
