@@ -381,6 +381,7 @@ static u32 get_supported_settings(struct hci_dev *hdev)
 	settings |= MGMT_SETTING_DISCOVERABLE;
 	settings |= MGMT_SETTING_PAIRABLE;
 	settings |= MGMT_SETTING_BROADCASTER;
+	settings |= MGMT_SETTING_OBSERVER;
 
 	if (lmp_ssp_capable(hdev))
 		settings |= MGMT_SETTING_SSP;
@@ -423,6 +424,9 @@ static u32 get_current_settings(struct hci_dev *hdev)
 
 	if (test_bit(HCI_BROADCASTER, &hdev->dev_flags))
 		settings |= MGMT_SETTING_BROADCASTER;
+
+	if (test_bit(HCI_OBSERVER, &hdev->dev_flags))
+		settings |= MGMT_SETTING_OBSERVER;
 
 	if (test_bit(HCI_LINK_SECURITY, &hdev->dev_flags))
 		settings |= MGMT_SETTING_LINK_SECURITY;
@@ -2843,6 +2847,44 @@ static int set_broadcaster(struct sock *sk, struct hci_dev *hdev, void *data,
 	return set_broadcaster_le(sk, hdev, cp->val);
 }
 
+static int set_observer_le(struct hci_dev *hdev, u8 enable)
+{
+	struct hci_cp_le_set_scan_enable cmd;
+
+	cmd.enable = enable;
+	cmd.filter_dup = 0;
+	return hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(cmd), &cmd);
+}
+
+static int set_observer(struct sock *sk, struct hci_dev *hdev, void *data,
+			u16 len)
+{
+	struct mgmt_mode *cp = data;
+	int err;
+
+	BT_DBG("%s val:%i", hdev->name, cp->val);
+
+	if (cp->val)
+		set_bit(HCI_OBSERVER, &hdev->dev_flags);
+	else
+		clear_bit(HCI_OBSERVER, &hdev->dev_flags);
+
+	hci_dev_lock(hdev);
+
+	if (test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
+		set_observer_le(hdev, cp->val);
+
+	err = send_settings_rsp(sk, MGMT_OP_SET_OBSERVER, hdev);
+	if (err < 0)
+		goto failed;
+
+	err = new_settings(hdev, sk);
+
+failed:
+	hci_dev_unlock(hdev);
+	return err;
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -2893,6 +2935,7 @@ static const struct mgmt_handler {
 	{ set_controller_data,    true,  MGMT_SET_CONTROLLER_DATA_SIZE },
 	{ unset_controller_data,  false, MGMT_UNSET_CONTROLLER_DATA_SIZE },
 	{ set_broadcaster,        false, MGMT_SETTING_SIZE },
+	{ set_observer,           false, MGMT_SETTING_SIZE },
 };
 
 
