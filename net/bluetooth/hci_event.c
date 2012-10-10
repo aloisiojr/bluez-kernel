@@ -1277,42 +1277,42 @@ static void hci_cc_le_set_scan_enable(struct hci_dev *hdev,
 	if (!cp)
 		return;
 
+	hci_dev_lock(hdev);
+
+	if (!status) {
+		if (cp->enable)
+			set_bit(HCI_LE_SCAN, &hdev->dev_flags);
+		else
+			clear_bit(HCI_LE_SCAN, &hdev->dev_flags);
+	}
+
+	if (hdev->le_scan_req_reason == LE_SCAN_REQ_REASON_RESET)
+		goto unlock;
+
+	if (hdev->le_scan_req_reason == LE_SCAN_REQ_REASON_OBSERVER) {
+		mgmt_set_observer_complete(hdev, cp->enable, status);
+		goto unlock;
+	}
+
 	switch (cp->enable) {
 	case LE_SCANNING_ENABLED:
-		hci_req_complete(hdev, HCI_OP_LE_SET_SCAN_ENABLE, status);
-
-		if (status) {
-			hci_dev_lock(hdev);
+		if (status)
 			mgmt_start_discovery_failed(hdev, status);
-			hci_dev_unlock(hdev);
-			return;
-		}
-
-		set_bit(HCI_LE_SCAN, &hdev->dev_flags);
-
-		hci_dev_lock(hdev);
-		hci_discovery_set_state(hdev, DISCOVERY_FINDING);
-		hci_dev_unlock(hdev);
+		else
+			hci_discovery_set_state(hdev, DISCOVERY_FINDING);
 		break;
 
 	case LE_SCANNING_DISABLED:
 		if (status) {
-			hci_dev_lock(hdev);
 			mgmt_stop_discovery_failed(hdev, status);
-			hci_dev_unlock(hdev);
-			return;
+			goto unlock;
 		}
-
-		clear_bit(HCI_LE_SCAN, &hdev->dev_flags);
 
 		if (hdev->discovery.type == DISCOV_TYPE_INTERLEAVED &&
-		    hdev->discovery.state == DISCOVERY_FINDING) {
+		    hdev->discovery.state == DISCOVERY_FINDING)
 			mgmt_interleaved_discovery(hdev);
-		} else {
-			hci_dev_lock(hdev);
+		else
 			hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
-			hci_dev_unlock(hdev);
-		}
 
 		break;
 
@@ -1320,6 +1320,10 @@ static void hci_cc_le_set_scan_enable(struct hci_dev *hdev,
 		BT_ERR("Used reserved LE_Scan_Enable param %d", cp->enable);
 		break;
 	}
+
+unlock:
+	hci_req_complete(hdev, HCI_OP_LE_SET_SCAN_ENABLE, status);
+	hci_dev_unlock(hdev);
 }
 
 static void hci_cc_le_ltk_reply(struct hci_dev *hdev, struct sk_buff *skb)

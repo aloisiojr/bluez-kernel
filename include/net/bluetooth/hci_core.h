@@ -55,6 +55,8 @@ struct inquiry_entry {
 	struct inquiry_data	data;
 };
 
+#define hdev_is_in_discovery(hdev) (hdev->discovery.state != DISCOVERY_STOPPED)
+
 struct discovery_state {
 	int			type;
 	enum {
@@ -125,7 +127,9 @@ struct le_scan_params {
 };
 
 enum {
+	LE_SCAN_REQ_REASON_RESET,
 	LE_SCAN_REQ_REASON_DISCOVERY,
+	LE_SCAN_REQ_REASON_OBSERVER,
 };
 
 struct broadcast_data {
@@ -1120,6 +1124,7 @@ int mgmt_read_local_oob_data_reply_complete(struct hci_dev *hdev, u8 *hash,
 int mgmt_le_enable_complete(struct hci_dev *hdev, u8 enable, u8 status);
 int mgmt_set_broadcaster_complete(struct hci_dev *hdev, bool changed,
 				  u8 status);
+int mgmt_set_observer_complete(struct hci_dev *hdev, u8 enable, u8 status);
 int mgmt_device_found(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 link_type,
 		      u8 addr_type, u8 *dev_class, s8 rssi, u8 cfm_name,
 		      u8 ssp, u8 *eir, u16 eir_len);

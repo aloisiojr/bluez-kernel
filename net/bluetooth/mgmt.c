@@ -106,11 +106,13 @@ static const u16 mgmt_events[] = {
  * These LE scan and inquiry parameters were chosen according to LE General
  * Discovery Procedure specification.
  */
-#define LE_SCAN_TYPE			0x01
+#define LE_SCAN_TYPE_PASSIVE		0x00
+#define LE_SCAN_TYPE_ACTIVE		0x01
 #define LE_SCAN_WIN			0x12
 #define LE_SCAN_INT			0x12
 #define LE_SCAN_TIMEOUT_LE_ONLY		10240	/* TGAP(gen_disc_scan_min) */
 #define LE_SCAN_TIMEOUT_BREDR_LE	5120	/* TGAP(100)/2 */
+#define LE_SCAN_NO_TIMEOUT		-1	/* Observer role */
 
 #define INQUIRY_LEN_BREDR		0x08	/* TGAP(100) */
 #define INQUIRY_LEN_BREDR_LE		0x04	/* TGAP(100)/2 */
@@ -395,6 +397,7 @@ static u32 get_supported_settings(struct hci_dev *hdev)
 	if (lmp_le_capable(hdev)) {
 		settings |= MGMT_SETTING_LE;
 		settings |= MGMT_SETTING_BROADCASTER;
+		settings |= MGMT_SETTING_OBSERVER;
 	}
 
 	return settings;
@@ -424,6 +427,9 @@ static u32 get_current_settings(struct hci_dev *hdev)
 
 	if (test_bit(HCI_BROADCASTER, &hdev->dev_flags))
 		settings |= MGMT_SETTING_BROADCASTER;
+
+	if (test_bit(HCI_OBSERVER, &hdev->dev_flags))
+		settings |= MGMT_SETTING_OBSERVER;
 
 	if (test_bit(HCI_LINK_SECURITY, &hdev->dev_flags))
 		settings |= MGMT_SETTING_LINK_SECURITY;
@@ -2318,13 +2324,9 @@ int mgmt_interleaved_discovery(struct hci_dev *hdev)
 
 	BT_DBG("%s", hdev->name);
 
-	hci_dev_lock(hdev);
-
 	err = hci_do_inquiry(hdev, INQUIRY_LEN_BREDR_LE);
 	if (err < 0)
 		hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
-
-	hci_dev_unlock(hdev);
 
 	return err;
 }
@@ -2352,7 +2354,7 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 		goto failed;
 	}
 
-	if (hdev->discovery.state != DISCOVERY_STOPPED) {
+	if (hdev_is_in_discovery(hdev)) {
 		err = cmd_status(sk, hdev->id, MGMT_OP_START_DISCOVERY,
 				 MGMT_STATUS_BUSY);
 		goto failed;
@@ -2376,8 +2378,9 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 
 	case DISCOV_TYPE_LE:
 		if (lmp_host_le_capable(hdev))
-			err = hci_le_scan(hdev, LE_SCAN_TYPE, LE_SCAN_INT,
-					  LE_SCAN_WIN, LE_SCAN_TIMEOUT_LE_ONLY,
+			err = hci_le_scan(hdev, LE_SCAN_TYPE_ACTIVE,
+					  LE_SCAN_INT, LE_SCAN_WIN,
+					  LE_SCAN_TIMEOUT_LE_ONLY,
 					  LE_SCAN_REQ_REASON_DISCOVERY);
 		else
 			err = -ENOTSUPP;
@@ -2385,8 +2388,9 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 
 	case DISCOV_TYPE_INTERLEAVED:
 		if (lmp_host_le_capable(hdev) && lmp_bredr_capable(hdev))
-			err = hci_le_scan(hdev, LE_SCAN_TYPE, LE_SCAN_INT,
-					  LE_SCAN_WIN, LE_SCAN_TIMEOUT_BREDR_LE,
+			err = hci_le_scan(hdev, LE_SCAN_TYPE_ACTIVE,
+					  LE_SCAN_INT, LE_SCAN_WIN,
+					  LE_SCAN_TIMEOUT_BREDR_LE,
 					  LE_SCAN_REQ_REASON_DISCOVERY);
 		else
 			err = -ENOTSUPP;
@@ -2834,6 +2838,77 @@ static int set_broadcaster(struct sock *sk, struct hci_dev *hdev, void *data,
 	return set_broadcaster_le(sk, hdev, cp->val);
 }
 
+static int set_observer_le(struct sock *sk, struct hci_dev *hdev, u8 enable)
+{
+	struct pending_cmd *cmd;
+	int err;
+
+	BT_DBG("%s enable:%i", hdev->name, enable);
+
+	hci_dev_lock(hdev);
+
+	if (!hdev_is_powered(hdev)) {
+		err = cmd_status(sk, hdev->id, MGMT_OP_SET_OBSERVER,
+				 MGMT_STATUS_NOT_POWERED);
+		goto unlock;
+	}
+
+	if (mgmt_pending_find(MGMT_OP_SET_OBSERVER, hdev)) {
+		err = cmd_status(sk, hdev->id, MGMT_OP_SET_OBSERVER,
+				 MGMT_STATUS_BUSY);
+		goto unlock;
+	}
+
+	if (enable == test_bit(HCI_OBSERVER, &hdev->dev_flags)) {
+		err = send_settings_rsp(sk, MGMT_OP_SET_OBSERVER, hdev);
+		goto unlock;
+	}
+
+	if (hdev_is_in_discovery(hdev)) {
+		change_bit(HCI_OBSERVER, &hdev->dev_flags);
+		err = send_settings_rsp(sk, MGMT_OP_SET_OBSERVER, hdev);
+		if (err < 0)
+			goto unlock;
+
+		err = new_settings(hdev, sk);
+		goto unlock;
+	}
+
+	cmd = mgmt_pending_add(sk, MGMT_OP_SET_OBSERVER, hdev, NULL, 0);
+	if (!cmd) {
+		err = -ENOMEM;
+		goto unlock;
+	}
+
+	if (enable)
+		err = hci_le_scan(hdev, LE_SCAN_TYPE_PASSIVE, LE_SCAN_INT,
+				  LE_SCAN_WIN, LE_SCAN_NO_TIMEOUT,
+				  LE_SCAN_REQ_REASON_OBSERVER);
+	else
+		err = hci_cancel_le_scan(hdev, LE_SCAN_REQ_REASON_OBSERVER);
+
+	if (err < 0)
+		mgmt_pending_remove(cmd);
+
+unlock:
+	hci_dev_unlock(hdev);
+	return err;
+}
+
+static int set_observer(struct sock *sk, struct hci_dev *hdev, void *data,
+			u16 len)
+{
+	struct mgmt_mode *cp = data;
+
+	BT_DBG("%s val:%i", hdev->name, cp->val);
+
+	if (!test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
+		return cmd_status(sk, hdev->id, MGMT_OP_SET_OBSERVER,
+				  MGMT_STATUS_NOT_SUPPORTED);
+
+	return set_observer_le(sk, hdev, cp->val);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -2884,6 +2959,7 @@ static const struct mgmt_handler {
 	{ set_controller_data,    true,  MGMT_SET_CONTROLLER_DATA_SIZE },
 	{ unset_controller_data,  false, MGMT_UNSET_CONTROLLER_DATA_SIZE },
 	{ set_broadcaster,        false, MGMT_SETTING_SIZE },
+	{ set_observer,           false, MGMT_SETTING_SIZE },
 };
 
 
@@ -3777,6 +3853,42 @@ int mgmt_set_broadcaster_complete(struct hci_dev *hdev, bool changed, u8 status)
 	return err;
 }
 
+int mgmt_set_observer_complete(struct hci_dev *hdev, u8 enable, u8 status)
+{
+	struct pending_cmd *cmd;
+	struct cmd_lookup match = { NULL, hdev };
+	bool changed = false;
+	int err = 0;
+
+	cmd = mgmt_pending_find(MGMT_OP_SET_OBSERVER, hdev);
+	if (!cmd)
+		return -ENOENT;
+
+	if (status) {
+		u8 mgmt_err = mgmt_status(status);
+		cmd_status_rsp(cmd, &mgmt_err);
+		return err;
+	}
+
+	if (enable) {
+		if (!test_and_set_bit(HCI_OBSERVER, &hdev->dev_flags))
+			changed = true;
+	} else {
+		if (test_and_clear_bit(HCI_OBSERVER, &hdev->dev_flags))
+			changed = true;
+	}
+
+	settings_rsp(cmd, &match);
+
+	if (changed)
+		err = new_settings(hdev, match.sk);
+
+	if (match.sk)
+		sock_put(match.sk);
+
+	return err;
+}
+
 int mgmt_device_found(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 link_type,
 		      u8 addr_type, u8 *dev_class, s8 rssi, u8 cfm_name, u8
 		      ssp, u8 *eir, u16 eir_len)
@@ -3892,6 +4004,11 @@ int mgmt_discovering(struct hci_dev *hdev, u8 discovering)
 			     sizeof(type));
 		mgmt_pending_remove(cmd);
 	}
+
+	if (!discovering && test_bit(HCI_OBSERVER, &hdev->dev_flags))
+		hci_le_scan(hdev, LE_SCAN_TYPE_PASSIVE, LE_SCAN_INT,
+			    LE_SCAN_WIN, LE_SCAN_NO_TIMEOUT,
+			    LE_SCAN_REQ_REASON_OBSERVER);
 
 	memset(&ev, 0, sizeof(ev));
 	ev.type = hdev->discovery.type;

@@ -93,6 +93,7 @@ struct mgmt_rp_read_index_list {
 #define MGMT_SETTING_HS			0x00000100
 #define MGMT_SETTING_LE			0x00000200
 #define MGMT_SETTING_BROADCASTER	0x00000400
+#define MGMT_SETTING_OBSERVER		0x00000800
 
 #define MGMT_OP_READ_INFO		0x0004
 #define MGMT_READ_INFO_SIZE		0
@@ -367,6 +368,8 @@ struct mgmt_cp_unset_controller_data {
 #define MGMT_UNSET_CONTROLLER_DATA_SIZE	1
 
 #define MGMT_OP_SET_BROADCASTER		0x002B
+
+#define MGMT_OP_SET_OBSERVER		0x002C
 
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {

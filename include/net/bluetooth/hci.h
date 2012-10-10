@@ -122,6 +122,7 @@ enum {
 	HCI_PENDING_CLASS,
 	HCI_PERIODIC_INQ,
 	HCI_BROADCASTER,
+	HCI_OBSERVER,
 };
 
 /* HCI ioctl defines */
