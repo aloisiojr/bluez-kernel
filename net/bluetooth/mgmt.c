@@ -2377,7 +2377,8 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 	case DISCOV_TYPE_LE:
 		if (lmp_host_le_capable(hdev))
 			err = hci_le_scan(hdev, LE_SCAN_TYPE, LE_SCAN_INT,
-					  LE_SCAN_WIN, LE_SCAN_TIMEOUT_LE_ONLY);
+					  LE_SCAN_WIN, LE_SCAN_TIMEOUT_LE_ONLY,
+					  LE_SCAN_REQ_REASON_DISCOVERY);
 		else
 			err = -ENOTSUPP;
 		break;
@@ -2385,8 +2386,8 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 	case DISCOV_TYPE_INTERLEAVED:
 		if (lmp_host_le_capable(hdev) && lmp_bredr_capable(hdev))
 			err = hci_le_scan(hdev, LE_SCAN_TYPE, LE_SCAN_INT,
-					  LE_SCAN_WIN,
-					  LE_SCAN_TIMEOUT_BREDR_LE);
+					  LE_SCAN_WIN, LE_SCAN_TIMEOUT_BREDR_LE,
+					  LE_SCAN_REQ_REASON_DISCOVERY);
 		else
 			err = -ENOTSUPP;
 		break;
@@ -2443,7 +2444,8 @@ static int stop_discovery(struct sock *sk, struct hci_dev *hdev, void *data,
 		if (test_bit(HCI_INQUIRY, &hdev->flags))
 			err = hci_cancel_inquiry(hdev);
 		else
-			err = hci_cancel_le_scan(hdev);
+			err = hci_cancel_le_scan(hdev,
+						 LE_SCAN_REQ_REASON_DISCOVERY);
 
 		break;
 

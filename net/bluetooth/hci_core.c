@@ -1654,20 +1654,20 @@ static void le_scan_param_req(struct hci_dev *hdev, unsigned long opt)
 
 static void le_scan_enable_req(struct hci_dev *hdev, unsigned long opt)
 {
-	struct hci_cp_le_set_scan_enable cp;
+	struct hci_cp_le_set_scan_enable *cp;
 
-	memset(&cp, 0, sizeof(cp));
-	cp.enable = 1;
-	cp.filter_dup = 1;
+	cp = (struct hci_cp_le_set_scan_enable *) opt;
 
-	hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(cp), &cp);
+	hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE,
+		     sizeof(struct hci_cp_le_set_scan_enable), cp);
 }
 
 static int hci_do_le_scan(struct hci_dev *hdev, u8 type, u16 interval,
-			  u16 window, int timeout)
+			  u16 window, int timeout, u8 reason)
 {
 	long timeo = msecs_to_jiffies(3000);
 	struct le_scan_params param;
+	struct hci_cp_le_set_scan_enable cp;
 	int err;
 
 	BT_DBG("%s", hdev->name);
@@ -1679,38 +1679,52 @@ static int hci_do_le_scan(struct hci_dev *hdev, u8 type, u16 interval,
 	param.interval = interval;
 	param.window = window;
 
+	memset(&cp, 0, sizeof(cp));
+	cp.enable = 1;
+	if (reason == LE_SCAN_REQ_REASON_DISCOVERY)
+		cp.filter_dup = 1;
+
+	hci_dev_lock(hdev);
+	hdev->le_scan_req_reason = reason;
+	hci_dev_unlock(hdev);
+
 	hci_req_lock(hdev);
 
 	err = __hci_request(hdev, le_scan_param_req, (unsigned long) &param,
 			    timeo);
-	if (!err)
-		err = __hci_request(hdev, le_scan_enable_req, 0, timeo);
+	if (err)
+		goto unlock;
 
+	err = __hci_request(hdev, le_scan_enable_req, (unsigned long) &cp,
+			    timeo);
+	if (err)
+		goto unlock;
+
+	if (timeout > 0)
+		schedule_delayed_work(&hdev->le_scan_disable,
+				      msecs_to_jiffies(timeout));
+
+unlock:
 	hci_req_unlock(hdev);
-
-	if (err < 0)
-		return err;
-
-	schedule_delayed_work(&hdev->le_scan_disable,
-			      msecs_to_jiffies(timeout));
-
-	return 0;
+	return err;
 }
 
-int hci_cancel_le_scan(struct hci_dev *hdev)
+int hci_cancel_le_scan(struct hci_dev *hdev, u8 reason)
 {
+	struct hci_cp_le_set_scan_enable cp;
+
 	BT_DBG("%s", hdev->name);
 
 	if (!test_bit(HCI_LE_SCAN, &hdev->dev_flags))
 		return -EALREADY;
 
-	if (cancel_delayed_work(&hdev->le_scan_disable)) {
-		struct hci_cp_le_set_scan_enable cp;
+	if (reason == LE_SCAN_REQ_REASON_DISCOVERY)
+		if (!cancel_delayed_work(&hdev->le_scan_disable))
+			return 0;
 
-		/* Send HCI command to disable LE Scan */
-		memset(&cp, 0, sizeof(cp));
-		hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(cp), &cp);
-	}
+	/* Send HCI command to disable LE Scan */
+	memset(&cp, 0, sizeof(cp));
+	hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(cp), &cp);
 
 	return 0;
 }
@@ -1736,11 +1750,11 @@ static void le_scan_work(struct work_struct *work)
 	BT_DBG("%s", hdev->name);
 
 	hci_do_le_scan(hdev, param->type, param->interval, param->window,
-		       param->timeout);
+		       param->timeout, param->reason);
 }
 
 int hci_le_scan(struct hci_dev *hdev, u8 type, u16 interval, u16 window,
-		int timeout)
+		int timeout, u8 reason)
 {
 	struct le_scan_params *param = &hdev->le_scan_params;
 
@@ -1756,6 +1770,7 @@ int hci_le_scan(struct hci_dev *hdev, u8 type, u16 interval, u16 window,
 	param->interval = interval;
 	param->window = window;
 	param->timeout = timeout;
+	param->reason = reason;
 
 	queue_work(system_long_wq, &hdev->le_scan);
 

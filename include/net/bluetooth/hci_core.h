@@ -121,6 +121,11 @@ struct le_scan_params {
 	u16 interval;
 	u16 window;
 	int timeout;
+	u8 reason;
+};
+
+enum {
+	LE_SCAN_REQ_REASON_DISCOVERY,
 };
 
 struct broadcast_data {
@@ -289,6 +294,7 @@ struct hci_dev {
 
 	struct work_struct	le_scan;
 	struct le_scan_params	le_scan_params;
+	__u8			le_scan_req_reason;
 
 	__s8			adv_tx_power;
 	__u8			adv_data[HCI_MAX_AD_LENGTH];
@@ -1164,9 +1170,10 @@ void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __u8 rand[8],
 							__u8 ltk[16]);
 int hci_do_inquiry(struct hci_dev *hdev, u8 length);
 int hci_cancel_inquiry(struct hci_dev *hdev);
+
 int hci_le_scan(struct hci_dev *hdev, u8 type, u16 interval, u16 window,
-		int timeout);
-int hci_cancel_le_scan(struct hci_dev *hdev);
+		int timeout, u8 reason);
+int hci_cancel_le_scan(struct hci_dev *hdev, u8 reason);
 
 u8 bdaddr_to_le(u8 bdaddr_type);
 
