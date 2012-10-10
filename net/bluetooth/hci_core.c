@@ -1556,14 +1556,28 @@ static int hci_do_le_scan(struct hci_dev *hdev, u8 type, u16 interval,
 
 	BT_DBG("%s", hdev->name);
 
-	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags) &&
+	    reason == LE_SCAN_REQ_REASON_OBSERVER)
 		return -EINPROGRESS;
+
+	memset(&cp, 0, sizeof(cp));
+
+	if (test_bit(HCI_LE_SCAN, &hdev->dev_flags) &&
+	    reason == LE_SCAN_REQ_REASON_DISCOVERY) {
+		hci_dev_lock(hdev);
+		hdev->le_scan_req_reason = LE_SCAN_REQ_REASON_RESET;
+		hci_dev_unlock(hdev);
+
+		err = hci_request(hdev, le_scan_enable_req, (unsigned long) &cp,
+				  timeo);
+		if (err)
+			return err;
+	}
 
 	param.type = type;
 	param.interval = interval;
 	param.window = window;
 
-	memset(&cp, 0, sizeof(cp));
 	cp.enable = 1;
 	if (reason == LE_SCAN_REQ_REASON_DISCOVERY)
 		cp.filter_dup = 1;
