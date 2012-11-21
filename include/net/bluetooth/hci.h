@@ -337,6 +337,9 @@ enum {
 #define EIR_SSP_HASH_C		0x0E /* Simple Pairing Hash C */
 #define EIR_SSP_RAND_R		0x0F /* Simple Pairing Randomizer R */
 #define EIR_DEVICE_ID		0x10 /* device ID */
+/* Advertising field types */
+#define ADV_SERVICE_DATA	0x16 /* Service Data */
+#define ADV_MANUFACTURER_DATA	0xFF /* Manufacturer Specific Data */
 
 /* Low Energy Advertising Flags */
 #define LE_AD_LIMITED		0x01 /* Limited Discoverable */

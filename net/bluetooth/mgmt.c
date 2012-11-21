@@ -2701,6 +2701,44 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 	return 0;
 }
 
+static int set_controller_data(struct sock *sk, struct hci_dev *hdev,
+			       void *data, u16 len)
+{
+	struct mgmt_cp_set_controller_data *cp = data;
+	u8 room;
+
+	BT_DBG("%s", hdev->name);
+
+	if (cp->type != ADV_SERVICE_DATA && cp->type != ADV_MANUFACTURER_DATA)
+		return cmd_status(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA,
+				  MGMT_STATUS_INVALID_PARAMS);
+
+	hci_dev_lock(hdev);
+
+	if (!hdev_is_powered(hdev)) {
+		hci_dev_unlock(hdev);
+		return cmd_status(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA,
+				  MGMT_STATUS_NOT_POWERED);
+	}
+
+	room = HCI_MAX_AD_LENGTH - hdev->broadcast_data_len;
+	if (sizeof(cp->length) + sizeof(cp->type) + cp->length > room) {
+		hci_dev_unlock(hdev);
+		return cmd_status(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA,
+				  MGMT_STATUS_NO_RESOURCES);
+	}
+
+	BT_DBG("flags:0x%02x length:%i type:0x%02x", cp->flags, cp->length,
+	       cp->type);
+
+	hci_broadcast_data_add(hdev, cp->flags, cp->type, cp->length, cp->data);
+
+	hci_dev_unlock(hdev);
+
+	return cmd_complete(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA, 0, NULL,
+			    0);
+}
+
 static const struct mgmt_handler {
 	int (*func) (struct sock *sk, struct hci_dev *hdev, void *data,
 		     u16 data_len);
@@ -2748,6 +2786,7 @@ static const struct mgmt_handler {
 	{ block_device,           false, MGMT_BLOCK_DEVICE_SIZE },
 	{ unblock_device,         false, MGMT_UNBLOCK_DEVICE_SIZE },
 	{ set_device_id,          false, MGMT_SET_DEVICE_ID_SIZE },
+	{ set_controller_data,    true,  MGMT_SET_CONTROLLER_DATA_SIZE },
 };
 
 

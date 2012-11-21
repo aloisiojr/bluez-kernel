@@ -1504,6 +1504,40 @@ int hci_add_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 *hash,
 	return 0;
 }
 
+int hci_broadcast_data_add(struct hci_dev *hdev, u8 flags, u8 type, u8 length,
+			    u8 *data)
+{
+	struct broadcast_data *b_data;
+
+	b_data = kmalloc(sizeof(*b_data) + length, GFP_KERNEL);
+	if (!b_data)
+		return -ENOMEM;
+
+	b_data->flags = flags;
+	b_data->type = type;
+	b_data->length = length;
+	memcpy(b_data->data, data, length);
+
+	list_add(&b_data->list, &hdev->broadcast_data);
+	hdev->broadcast_data_len += sizeof(length) + sizeof(type) + length;
+
+	return 0;
+}
+
+int hci_broadcast_data_clear(struct hci_dev *hdev)
+{
+	struct broadcast_data *b_data, *n;
+
+	list_for_each_entry_safe(b_data, n, &hdev->broadcast_data, list) {
+		list_del(&b_data->list);
+		kfree(b_data);
+	}
+
+	hdev->broadcast_data_len = 0;
+
+	return 0;
+}
+
 struct bdaddr_list *hci_blacklist_lookup(struct hci_dev *hdev, bdaddr_t *bdaddr)
 {
 	struct bdaddr_list *b;
@@ -1721,6 +1755,7 @@ struct hci_dev *hci_alloc_dev(void)
 	INIT_LIST_HEAD(&hdev->long_term_keys);
 	INIT_LIST_HEAD(&hdev->remote_oob_data);
 	INIT_LIST_HEAD(&hdev->conn_hash.list);
+	INIT_LIST_HEAD(&hdev->broadcast_data);
 
 	INIT_WORK(&hdev->rx_work, hci_rx_work);
 	INIT_WORK(&hdev->cmd_work, hci_cmd_work);
@@ -1887,6 +1922,7 @@ void hci_unregister_dev(struct hci_dev *hdev)
 	hci_link_keys_clear(hdev);
 	hci_smp_ltks_clear(hdev);
 	hci_remote_oob_data_clear(hdev);
+	hci_broadcast_data_clear(hdev);
 	hci_dev_unlock(hdev);
 
 	hci_dev_put(hdev);
