@@ -2720,12 +2720,6 @@ static int set_controller_data(struct sock *sk, struct hci_dev *hdev,
 
 	hci_dev_lock(hdev);
 
-	if (!hdev_is_powered(hdev)) {
-		hci_dev_unlock(hdev);
-		return cmd_status(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA,
-				  MGMT_STATUS_NOT_POWERED);
-	}
-
 	room = HCI_MAX_AD_LENGTH - hdev->broadcast_data_len;
 	if (sizeof(cp->length) + sizeof(cp->type) + cp->length > room) {
 		hci_dev_unlock(hdev);
@@ -2757,12 +2751,6 @@ static int unset_controller_data(struct sock *sk, struct hci_dev *hdev,
 
 	hci_dev_lock(hdev);
 
-	if (!hdev_is_powered(hdev)) {
-		hci_dev_unlock(hdev);
-		return cmd_status(sk, hdev->id, MGMT_OP_UNSET_CONTROLLER_DATA,
-				  MGMT_STATUS_NOT_POWERED);
-	}
-
 	removed = hci_broadcast_data_remove(hdev, cp->type);
 
 	if (removed && test_bit(HCI_BROADCASTER, &hdev->dev_flags))
@@ -2784,8 +2772,20 @@ static int set_broadcaster_le(struct sock *sk, struct hci_dev *hdev, u8 enable)
 	hci_dev_lock(hdev);
 
 	if (!hdev_is_powered(hdev)) {
-		err = cmd_status(sk, hdev->id, MGMT_OP_SET_BROADCASTER,
-				  MGMT_STATUS_NOT_POWERED);
+		bool changed = false;
+
+		if (enable != test_bit(HCI_BROADCASTER, &hdev->dev_flags)) {
+			change_bit(HCI_BROADCASTER, &hdev->dev_flags);
+			changed = true;
+		}
+
+		err = send_settings_rsp(sk, MGMT_OP_SET_BROADCASTER, hdev);
+		if (err < 0)
+			goto unlock;
+
+		if (changed)
+			err = new_settings(hdev, sk);
+
 		goto unlock;
 	}
 
@@ -3068,6 +3068,16 @@ int mgmt_powered(struct hci_dev *hdev, u8 powered)
 				hci_send_cmd(hdev,
 					     HCI_OP_WRITE_LE_HOST_SUPPORTED,
 					     sizeof(cp), &cp);
+
+			__hci_update_ad(hdev);
+
+			if (test_bit(HCI_BROADCASTER, &hdev->dev_flags)) {
+				u8 enable = 1;
+				hdev->le_adv_req_reason =
+						LE_ADV_REQ_REASON_BROADCASTER;
+				hci_send_cmd(hdev, HCI_OP_LE_SET_ADV_ENABLE,
+					     sizeof(enable), &enable);
+			}
 		}
 
 		if (lmp_bredr_capable(hdev)) {
