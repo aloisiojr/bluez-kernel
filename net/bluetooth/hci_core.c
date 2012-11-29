@@ -654,6 +654,30 @@ static u8 create_ad(struct hci_dev *hdev, u8 *ptr)
 	return ad_len;
 }
 
+static u8 create_ad_broadcast(struct hci_dev *hdev, u8 *ptr)
+{
+	u16 len = 0;
+	struct broadcast_data *d;
+
+	list_for_each_entry(d, &hdev->broadcast_data, list) {
+		u8 entry_len = sizeof(d->length) + sizeof(d->type) + d->length;
+
+		if (len + entry_len > HCI_MAX_AD_LENGTH) {
+			BT_DBG("Controller data bigger than adv data slot");
+			return len;
+		}
+
+		ptr[0] = sizeof(d->type) + d->length;
+		ptr[1] = d->type;
+		memcpy(&ptr[2], d->data, d->length);
+
+		len += entry_len;
+		ptr += entry_len;
+	}
+
+	return len;
+}
+
 int hci_update_ad(struct hci_dev *hdev)
 {
 	struct hci_cp_le_set_adv_data cp;
@@ -669,7 +693,10 @@ int hci_update_ad(struct hci_dev *hdev)
 
 	memset(&cp, 0, sizeof(cp));
 
-	len = create_ad(hdev, cp.data);
+	if (test_bit(HCI_BROADCASTER, &hdev->dev_flags))
+		len = create_ad_broadcast(hdev, cp.data);
+	else
+		len = create_ad(hdev, cp.data);
 
 	if (hdev->adv_data_len == len &&
 	    memcmp(cp.data, hdev->adv_data, len) == 0) {
