@@ -2848,8 +2848,20 @@ static int set_observer_le(struct sock *sk, struct hci_dev *hdev, u8 enable)
 	hci_dev_lock(hdev);
 
 	if (!hdev_is_powered(hdev)) {
-		err = cmd_status(sk, hdev->id, MGMT_OP_SET_OBSERVER,
-				 MGMT_STATUS_NOT_POWERED);
+		bool changed = false;
+
+		if (enable != test_bit(HCI_OBSERVER, &hdev->dev_flags)) {
+			change_bit(HCI_OBSERVER, &hdev->dev_flags);
+			changed = true;
+		}
+
+		err = send_settings_rsp(sk, MGMT_OP_SET_OBSERVER, hdev);
+		if (err < 0)
+			goto unlock;
+
+		if (changed)
+			err = new_settings(hdev, sk);
+
 		goto unlock;
 	}
 
@@ -3155,6 +3167,13 @@ int mgmt_powered(struct hci_dev *hdev, u8 powered)
 						LE_ADV_REQ_REASON_BROADCASTER;
 				hci_send_cmd(hdev, HCI_OP_LE_SET_ADV_ENABLE,
 					     sizeof(enable), &enable);
+			}
+
+			if (test_bit(HCI_OBSERVER, &hdev->dev_flags)) {
+				hci_le_scan(hdev, LE_SCAN_TYPE_PASSIVE,
+					    LE_SCAN_INT,
+					    LE_SCAN_WIN, LE_SCAN_NO_TIMEOUT,
+					    LE_SCAN_REQ_REASON_OBSERVER);
 			}
 		}
 
