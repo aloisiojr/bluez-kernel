@@ -227,10 +227,10 @@ static void hci_cc_write_local_name(struct hci_dev *hdev, struct sk_buff *skb)
 	else if (!status)
 		memcpy(hdev->dev_name, sent, HCI_MAX_NAME_LENGTH);
 
-	hci_dev_unlock(hdev);
-
 	if (!status && !test_bit(HCI_INIT, &hdev->flags))
-		hci_update_ad(hdev);
+		__hci_update_ad(hdev);
+
+	hci_dev_unlock(hdev);
 
 	hci_req_complete(hdev, HCI_OP_WRITE_LOCAL_NAME, status);
 }
@@ -1110,8 +1110,11 @@ static void hci_cc_le_read_adv_tx_power(struct hci_dev *hdev,
 
 	if (!rp->status) {
 		hdev->adv_tx_power = rp->tx_power;
-		if (!test_bit(HCI_INIT, &hdev->flags))
-			hci_update_ad(hdev);
+		if (!test_bit(HCI_INIT, &hdev->flags)) {
+			hci_dev_lock(hdev);
+			__hci_update_ad(hdev);
+			hci_dev_unlock(hdev);
+		}
 	}
 
 	hci_req_complete(hdev, HCI_OP_LE_READ_ADV_TX_POWER, rp->status);
@@ -1238,10 +1241,10 @@ static void hci_cc_le_set_adv_enable(struct hci_dev *hdev, struct sk_buff *skb)
 		}
 	}
 
-	hci_dev_unlock(hdev);
-
 	if (!test_bit(HCI_INIT, &hdev->flags))
-		hci_update_ad(hdev);
+		__hci_update_ad(hdev);
+
+	hci_dev_unlock(hdev);
 
 	hci_req_complete(hdev, HCI_OP_LE_SET_ADV_ENABLE, status);
 }
