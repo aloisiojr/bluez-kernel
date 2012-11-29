@@ -2738,6 +2738,9 @@ static int set_controller_data(struct sock *sk, struct hci_dev *hdev,
 
 	hci_broadcast_data_add(hdev, cp->flags, cp->type, cp->length, cp->data);
 
+	if (test_bit(HCI_BROADCASTER, &hdev->dev_flags))
+		__hci_update_ad(hdev);
+
 	hci_dev_unlock(hdev);
 
 	return cmd_complete(sk, hdev->id, MGMT_OP_SET_CONTROLLER_DATA, 0, NULL,
@@ -2748,6 +2751,7 @@ static int unset_controller_data(struct sock *sk, struct hci_dev *hdev,
 				 void *data, u16 len)
 {
 	struct mgmt_cp_unset_controller_data *cp = data;
+	int removed;
 
 	BT_DBG("%s type:0x%02x", hdev->name, cp->type);
 
@@ -2759,7 +2763,10 @@ static int unset_controller_data(struct sock *sk, struct hci_dev *hdev,
 				  MGMT_STATUS_NOT_POWERED);
 	}
 
-	hci_broadcast_data_remove(hdev, cp->type);
+	removed = hci_broadcast_data_remove(hdev, cp->type);
+
+	if (removed && test_bit(HCI_BROADCASTER, &hdev->dev_flags))
+		__hci_update_ad(hdev);
 
 	hci_dev_unlock(hdev);
 
